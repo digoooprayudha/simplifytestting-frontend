@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, 'Helvetica Neue', Arial, sans-serif;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      color: #1e1e1e;
+      background: #ffffff;
+    }
+
+    h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e1e1e;
+    }
+
+    p {
+      font-size: 11px;
+      color: #6e6e6e;
+      line-height: 1.5;
+    }
+
+    #exportBtn {
+      background-color: #18A0FB;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      width: 100%;
+      transition: background 0.15s;
+    }
+
+    #exportBtn:hover {
+      background-color: #0d8de3;
+    }
+
+    #exportBtn:disabled {
+      background-color: #b3d9fb;
+      cursor: not-allowed;
+    }
+
+    #status {
+      font-size: 11px;
+      color: #6e6e6e;
+      min-height: 16px;
+      word-break: break-word;
+    }
+
+    #status.error {
+      color: #F24822;
+    }
+
+    #status.success {
+      color: #1bc47d;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>SimplifyTesting Extractor</h2>
+  <p>Select one or more Frames/Screens in Figma, then click Export to download a ZIP with metadata + images.</p>
+  <button id="exportBtn">Export Design &amp; Metadata</button>
+  <div id="status"></div>
+
+  <script>
+    var exportBtn = document.getElementById('exportBtn');
+    var statusDiv = document.getElementById('status');
+
+    function setStatus(text, type) {
+      statusDiv.innerText = text;
+      statusDiv.className = type || '';
+    }
+
+    exportBtn.onclick = function () {
+      exportBtn.disabled = true;
+      setStatus('Extracting frames...', '');
+      parent.postMessage({ pluginMessage: { type: 'export-data' } }, '*');
+    };
+
+    window.onmessage = function (event) {
+      var msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === 'export-progress') {
+        setStatus(msg.text, '');
+        return;
+      }
+
+      if (msg.type === 'export-complete') {
+        setStatus('Building ZIP archive...', '');
+
+        try {
+          // Decode base64 to bytes
+          var b64 = msg.base64Zip;
+          var binStr = atob(b64);
+          var bytes = new Uint8Array(binStr.length);
+          for (var i = 0; i < binStr.length; i++) {
+            bytes[i] = binStr.charCodeAt(i);
+          }
+
+          // Create Blob and data URL (URL.createObjectURL may or may not work in Figma sandbox)
+          // Use a data: URI as fallback which always works
+          var base64Data = b64; // re-use the already-encoded zip
+          var dataUri = 'data:application/zip;base64,' + base64Data;
+
+          var a = document.createElement('a');
+          a.href = dataUri;
+          a.download = 'simplify-export-' + Date.now() + '.zip';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          setStatus('✅ Downloaded ' + msg.count + ' screen(s) in ZIP!', 'success');
+          exportBtn.disabled = false;
+          setTimeout(function () { setStatus('', ''); }, 5000);
+
+        } catch (e) {
+          setStatus('❌ Download failed: ' + e.message, 'error');
+          exportBtn.disabled = false;
+        }
+
+      } else if (msg.type === 'error') {
+        setStatus('❌ ' + msg.message, 'error');
+        exportBtn.disabled = false;
+      }
+    };
+  </script>
+</body>
+
+</html>

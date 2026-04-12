@@ -1,0 +1,22 @@
+{
+  "name": "simplifytesting-extractor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "code.js",
+  "scripts": {
+    "build": "esbuild code.ts --bundle --outfile=code.js --minify --format=iife --target=es2015 && esbuild ui.ts --bundle --outfile=ui.js --minify --format=iife --target=es2015",
+    "watch": "esbuild code.ts --bundle --outfile=code.js --watch --format=iife --target=es2015 & esbuild ui.ts --bundle --outfile=ui.js --watch --format=iife --target=es2015"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.123.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  }
+}
