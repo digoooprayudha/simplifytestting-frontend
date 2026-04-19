@@ -75,9 +75,22 @@ const TestCaseGenerationModal = ({ open, onOpenChange, onComplete }: TestCaseGen
   }, [onComplete]);
 
   const handleJobError = useCallback((failedJob: GenerationJob) => {
-    setError(failedJob.error_message || "Generation failed");
+    const isCancelled = failedJob.error_message?.toLowerCase().includes("cancel") || failedJob.phase === "cancelled";
+    if (!isCancelled) {
+      setError(failedJob.error_message || "Generation failed");
+    }
     setCurrentJobId(null);
   }, []);
+
+  const handleCancel = async () => {
+    if (!currentJobId || currentJobId === "polling") return;
+    try {
+      await apiClient.post(`/pipelines/cancel/${currentJobId}`, {});
+      toast.info("Cancellation requested. Stopping after current batch...");
+    } catch (e) {
+      toast.error("Failed to cancel");
+    }
+  };
 
   const { job, polling: generating } = useGenerationJobPoller({
     projectId,
@@ -216,7 +229,10 @@ const TestCaseGenerationModal = ({ open, onOpenChange, onComplete }: TestCaseGen
                 {job.scripts_generated > 0 && <span className="font-semibold text-primary">{job.scripts_generated}</span>}
                 {job.scripts_generated > 0 && " test cases generated so far"}
               </div>
-              <p className="text-[10px] text-muted-foreground italic">💡 You can close this — generation continues in background.</p>
+              <p className="text-[10px] text-muted-foreground italic">�� You can close this — generation continues in background.</p>
+              <Button variant="outline" size="sm" onClick={handleCancel} className="w-full gap-2 text-xs h-7 border-destructive/50 text-destructive hover:bg-destructive/10">
+                Stop Generation
+              </Button>
             </div>
           )}
 

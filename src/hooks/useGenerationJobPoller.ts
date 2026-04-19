@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/apiClient";
+﻿import { apiClient } from "@/lib/apiClient";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -99,7 +99,12 @@ export function useGenerationJobPoller({ projectId, jobId, onComplete, onError }
           onCompleteRef.current?.(jobData);
         } else if (jobData.status === "failed") {
           stopPolling();
-          toast.error(jobData.error_message || "Generation failed");
+          const isCancelled = jobData.error_message?.toLowerCase().includes("cancel") || jobData.phase === "cancelled";
+          if (isCancelled) {
+            toast.info("Generation stopped.");
+          } else {
+            toast.error(jobData.error_message || "Generation failed");
+          }
           onErrorRef.current?.(jobData);
         }
       } catch (error) {
@@ -160,9 +165,13 @@ export function useActiveGenerationJobs(projectId: string | null) {
 
   const cancelJob = async () => {
     if (!job || job.status !== "running") return;
-    // No cancel endpoint on FastAPI yet — just stop polling locally
+    try {
+      await apiClient.post(`/pipelines/cancel/${job.id}`, {});
+      toast.info("Cancellation requested. Stopping after current batch...");
+    } catch (e) {
+      toast.error("Failed to cancel job");
+    }
     setActiveJobId(null);
-    toast.info("Stopped monitoring job.");
   };
 
   return { activeJob: job, isRunning: polling, cancelJob };

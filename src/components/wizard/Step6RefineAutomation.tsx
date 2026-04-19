@@ -1,4 +1,4 @@
-import ValidationModal from "@/components/modals/ValidationModal";
+﻿import ValidationModal from "@/components/modals/ValidationModal";
 import { TestCasePagination } from "@/components/test-cases/TestCasePagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,9 @@ const Step6RefineAutomation = () => {
   const [validating, setValidating] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [fixStats, setFixStats] = useState<{ scripts_fixed: number; total_fixes: number } | null>(null);
+  const [regexIssues, setRegexIssues] = useState<any[]>([]);
+  const [orWarnings, setOrWarnings] = useState<{ tc_code: string; invalid_paths: string[] }[]>([]);
+  const [autoFixing, setAutoFixing] = useState(false);
   const [loadingFromDb, setLoadingFromDb] = useState(false);
   const [aiValidationOpen, setAiValidationOpen] = useState(false);
 
@@ -225,7 +228,41 @@ const Step6RefineAutomation = () => {
       else if (result.summary?.warnings > 0) toast.warning(`${result.summary.warnings} warnings, ${result.summary.placeholders} placeholders`);
       else toast.success("All scripts passed validation!");
     } catch (err: any) { toast.error(err.message || "Validation failed"); }
+    // Check Object Repository references
+    try {
+      const orResult = await apiClient.post<{ results: any[] }>("/pipelines/katalon/validate-references", { project_id: pid });
+      const orWarns = (orResult.results || []).filter((r: any) => r.status === "warning");
+      setOrWarnings(orWarns.map((r: any) => ({ tc_code: r.tc_code, invalid_paths: r.invalid_paths })));
+      if (orWarns.length > 0) toast.warning(`${orWarns.length} script(s) have invalid Object Repository paths`);
+    } catch (_) {}
     setValidating(false);
+  };
+
+  const runRegexCheck = async () => {
+    setValidating(true);
+    try {
+      const result = await apiClient.post<{ results: any[]; errors: number; warnings: number }>("/pipelines/katalon/regex-check", { project_id: pid });
+      setRegexIssues(result.results || []);
+      const errCount = result.errors || 0;
+      const warnCount = result.warnings || 0;
+      if (errCount > 0) toast.error(`${errCount} script(s) have fixable errors`);
+      else if (warnCount > 0) toast.warning(`${warnCount} script(s) have warnings`);
+      else toast.success("All scripts passed regex check!");
+    } catch (err: any) { toast.error(err.message || "Regex check failed"); }
+    setValidating(false);
+  };
+
+  const autoFixAll = async () => {
+    setAutoFixing(true);
+    try {
+      const result = await apiClient.post<{ fixed: number; total: number }>("/pipelines/katalon/auto-fix-all", { project_id: pid });
+      toast.success(`Auto-fixed ${result.fixed} of ${result.total} scripts`);
+      setRegexIssues([]);
+      // Reload scripts
+      const katalonData = await loadKatalonFromDb(pid);
+      if (katalonData) setKatalon(katalonData);
+    } catch (err: any) { toast.error(err.message || "Auto-fix failed"); }
+    setAutoFixing(false);
   };
 
   const runAutoFix = async () => {
@@ -369,8 +406,17 @@ const Step6RefineAutomation = () => {
               <Sparkles className="w-4 h-4" /> AI Validate
             </Button>
             <Button variant="outline" onClick={runValidation} disabled={validating} className="gap-2">
-              <ShieldCheck className="w-4 h-4" /> {validating ? "Validating…" : "Syntax Check"}
+              <ShieldCheck className="w-4 h-4" /> {validating ? "Validating..." : "Syntax Check"}
             </Button>
+            <Button variant="outline" onClick={runRegexCheck} disabled={validating || autoFixing} className="gap-2">
+              <ShieldCheck className="w-4 h-4" /> Regex Check
+            </Button>
+            {regexIssues.some((r: any) => r.status === "error" || r.status === "warning") && (
+              <Button variant="destructive" size="sm" onClick={autoFixAll} disabled={autoFixing} className="gap-2">
+                {autoFixing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                {autoFixing ? "Fixing..." : "Auto-Fix All"}
+              </Button>
+            )}
             <Button onClick={downloadZip} className="gap-2"><Download className="w-4 h-4" /> Download ZIP</Button>
           </div>
         </div>
@@ -483,6 +529,56 @@ const Step6RefineAutomation = () => {
               </Button>
             )}
           </div>
+        </motion.div>
+      )}
+
+      {/* Regex Check Issues */}
+      {regexIssues.some((r: any) => r.issue_count > 0) && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="mt-4 p-4 rounded-xl border bg-destructive/10 border-destructive/30">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+              <span className="text-sm font-semibold text-destructive">
+                {regexIssues.filter((r: any) => r.issue_count > 0).length} script(s) with fixable issues
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {regexIssues.filter((r: any) => r.issue_count > 0).map((script: any, i: number) => (
+              <div key={i} className="text-xs border-b border-border pb-1">
+                <span className="font-mono text-destructive font-semibold">{script.tc_code}</span>
+                <div className="ml-2 space-y-0.5 mt-0.5">
+                  {script.issues.slice(0, 3).map((issue: any, j: number) => (
+                    <div key={j} className="text-muted-foreground">
+                      Line {issue.line}: {issue.message}
+                      {issue.can_auto_fix && <span className="ml-1 text-success text-[10px]">[auto-fixable]</span>}
+                    </div>
+                  ))}
+                  {script.issues.length > 3 && <div className="text-muted-foreground">+{script.issues.length - 3} more issues</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Object Repository Reference Warnings */}
+      {orWarnings.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="mt-4 p-4 rounded-xl border bg-warning/10 border-warning/30">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-warning" />
+            <span className="text-sm font-semibold text-warning">{orWarnings.length} script(s) with invalid Object Repository paths</span>
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {orWarnings.map((w, i) => (
+              <div key={i} className="text-xs text-muted-foreground">
+                <span className="font-mono text-warning">{w.tc_code}</span>: {w.invalid_paths.slice(0, 3).join(", ")}{w.invalid_paths.length > 3 ? ` +${w.invalid_paths.length - 3} more` : ""}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">These paths were not found in the Object Repository. The script may use invented element names.</p>
         </motion.div>
       )}
 

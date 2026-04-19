@@ -898,8 +898,8 @@ const Step2Upload = () => {
     });
 
     // 🌟 AI AUTO-MAPPING: Mapping Figma and Code via Backend
-    const hasSources = figmaFilesRef.current.length > 0 || sourceCodeUploads.length > 0;
-    if (hasSources) {
+    // Always trigger mapping — backend checks if sources exist in DB
+    if (true) {
       setIsMappingFigma(true); // Re-using this loader for general mapping
       try {
         console.log("Triggering auto-map for Requirements...");

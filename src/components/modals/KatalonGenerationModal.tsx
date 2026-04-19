@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { FileCode, Loader2, CheckCircle2, AlertTriangle, RefreshCw, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,9 +61,22 @@ const KatalonGenerationModal = ({ open, onOpenChange, onComplete }: KatalonGener
   }, [projectId, setKatalon, onComplete]);
 
   const handleJobError = useCallback((failedJob: GenerationJob) => {
-    setError(failedJob.error_message || "Generation failed");
+    const isCancelled = failedJob.error_message?.toLowerCase().includes("cancel") || failedJob.phase === "cancelled";
+    if (!isCancelled) {
+      setError(failedJob.error_message || "Generation failed");
+    }
     setCurrentJobId(null);
   }, []);
+
+  const handleCancel = async () => {
+    if (!currentJobId || currentJobId === "polling") return;
+    try {
+      await apiClient.post(`/pipelines/cancel/${currentJobId}`, {});
+      toast.info("Cancellation requested. Stopping after current batch...");
+    } catch (e) {
+      toast.error("Failed to cancel");
+    }
+  };
 
   const { job, polling: generating } = useGenerationJobPoller({
     projectId,
@@ -116,6 +129,7 @@ const KatalonGenerationModal = ({ open, onOpenChange, onComplete }: KatalonGener
       if (response.allCovered) {
         toast.success("All test cases already have Katalon scripts — 100% coverage! 🎉");
         setStartingGeneration(false);
+        setCurrentJobId(null);
         return;
       }
       if (response.error) throw new Error(response.error);
@@ -207,6 +221,9 @@ const KatalonGenerationModal = ({ open, onOpenChange, onComplete }: KatalonGener
               </div>
               <Progress value={job.percentage} className="h-2" />
               <p className="text-[10px] text-muted-foreground italic">💡 You can close this — generation continues in background.</p>
+              <Button variant="outline" size="sm" onClick={handleCancel} className="w-full gap-2 text-xs h-7 border-destructive/50 text-destructive hover:bg-destructive/10">
+                Stop Generation
+              </Button>
             </div>
           )}
 

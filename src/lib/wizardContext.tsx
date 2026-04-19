@@ -75,7 +75,7 @@ const defaultSettings: ProjectSettings = {
   browser_type: "Chrome",
   locator_strategy: "id > css > xpath",
   naming_convention: "camelCase",
-  ai_model: "zai.glm-4.7",
+  ai_model: "",
 };
 
 const WizardContext = createContext<WizardContextType | null>(null);
@@ -208,7 +208,7 @@ export const useProjectFromUrl = () => {
             browser_type: data.browser_type as any,
             locator_strategy: data.locator_strategy,
             naming_convention: data.naming_convention as any,
-            ai_model: data.ai_model || "zai.glm-4.7",
+            ai_model: data.ai_model || "",
             figma_file_url: data.figma_file_url || undefined,
             figma_api_token: data.figma_api_token || undefined,
           });
