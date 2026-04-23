@@ -1,4 +1,4 @@
-﻿import ValidationModal from "@/components/modals/ValidationModal";
+﻿﻿import ValidationModal from "@/components/modals/ValidationModal";
 import { TestCasePagination } from "@/components/test-cases/TestCasePagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   generateWebUiSettings,
   isJsonContent,
 } from "@/lib/katalonProjectFiles";
-import { useWizard } from "@/lib/wizardContext";
+import { useWizard, loadKatalonFromDb } from "@/lib/wizardContext";
 import { saveAs } from "file-saver";
 import { motion } from "framer-motion";
 import JSZip from "jszip";
@@ -80,7 +80,6 @@ const Step6RefineAutomation = () => {
 
   const handleJobComplete = useCallback(async (completedJob: GenerationJob) => {
     if (!pid) return;
-    const { loadKatalonFromDb } = await import("@/lib/wizardContext");
     const katalonData = await loadKatalonFromDb(pid);
     if (katalonData) {
       setKatalon(katalonData);
@@ -111,7 +110,7 @@ const Step6RefineAutomation = () => {
         missing_only: true,
       });
       if (response.allCovered) {
-        toast.success("All test cases already have Katalon scripts — 100% coverage! 🎉");
+        toast.success("All test cases already have Katalon scripts - 100% coverage!");
         setStartingGeneration(false);
         return;
       }
@@ -161,7 +160,6 @@ const Step6RefineAutomation = () => {
     if (katalon || !pid) return;
     const load = async () => {
       setLoadingFromDb(true);
-      const { loadKatalonFromDb } = await import("@/lib/wizardContext");
       const katalonData = await loadKatalonFromDb(pid);
       if (katalonData) setKatalon(katalonData);
       setLoadingFromDb(false);
@@ -203,14 +201,14 @@ const Step6RefineAutomation = () => {
   const hasActiveFilters = search || filterType !== "all";
 
   if (loadingFromDb) {
-    return <div className="p-8 text-center text-muted-foreground">Loading automation scripts from database…</div>;
+    return <div className="p-8 text-center text-muted-foreground">Loading automation scripts from database|</div>;
   }
 
   if (!katalon) {
     return (
       <div className="p-8 max-w-2xl mx-auto text-center mt-20">
         <p className="text-muted-foreground">No automation code generated yet. Go back to Test Cases.</p>
-        <Button variant="outline" onClick={() => navigate(`/project/${urlProjectId}/test-cases`)} className="mt-4">← Back to Test Cases</Button>
+        <Button variant="outline" onClick={() => navigate(`/project/${urlProjectId}/test-cases`)} className="mt-4">? Back to Test Cases</Button>
       </div>
     );
   }
@@ -252,15 +250,35 @@ const Step6RefineAutomation = () => {
     setValidating(false);
   };
 
+  const runStaticCheck = async () => {
+    setValidating(true);
+    try {
+      const result = await apiClient.post<{ results: any[]; errors: number; warnings: number; passed: number }>("/pipelines/katalon/static-check", { project_id: pid });
+      setRegexIssues(result.results || []);
+      const errCount = result.errors || 0;
+      const warnCount = result.warnings || 0;
+      if (errCount > 0) toast.error(`${errCount} script(s) have errors`);
+      else if (warnCount > 0) toast.warning(`${warnCount} script(s) have warnings`);
+      else toast.success(`All ${result.passed || 0} scripts passed static check!`);
+    } catch (err: any) { toast.error(err.message || "Static check failed"); }
+    setValidating(false);
+  };
+
   const autoFixAll = async () => {
     setAutoFixing(true);
     try {
       const result = await apiClient.post<{ fixed: number; total: number }>("/pipelines/katalon/auto-fix-all", { project_id: pid });
-      toast.success(`Auto-fixed ${result.fixed} of ${result.total} scripts`);
-      setRegexIssues([]);
-      // Reload scripts
+      if (result.fixed > 0) {
+        toast.success(`Auto-fixed ${result.fixed} of ${result.total} scripts`);
+      } else {
+        toast.warning(`No fixes applied (${result.total} scripts checked)`);
+      }
+      // Reload scripts from DB
       const katalonData = await loadKatalonFromDb(pid);
       if (katalonData) setKatalon(katalonData);
+      // Re-run static check to reflect updated state
+      const checkResult = await apiClient.post<{ results: any[]; errors: number; warnings: number; passed: number }>("/pipelines/katalon/static-check", { project_id: pid });
+      setRegexIssues(checkResult.results || []);
     } catch (err: any) { toast.error(err.message || "Auto-fix failed"); }
     setAutoFixing(false);
   };
@@ -276,7 +294,6 @@ const Step6RefineAutomation = () => {
       setValidationIssues([]);
       setValidationSummary(null);
       // Reload katalon from DB
-      const { loadKatalonFromDb } = await import("@/lib/wizardContext");
       const katalonData = await loadKatalonFromDb(pid!);
       if (katalonData) setKatalon(katalonData);
       toast.success(`Auto-fix applied: ${result.stats?.total_fixes || 0} fixes`);
@@ -310,7 +327,7 @@ const Step6RefineAutomation = () => {
     setEditingKey(null);
     setValidationIssues([]);
     setValidationSummary(null);
-    toast.success("Code updated locally — regenerate to persist to database");
+    toast.success("Code updated locally | regenerate to persist to database");
   };
 
   const downloadZip = async () => {
@@ -328,10 +345,10 @@ const Step6RefineAutomation = () => {
     if (katalon.data_files) katalon.data_files.forEach(d => zip.file(`${root}/${d.file_path}`, d.content));
     zip.folder(`${root}/Keywords`); zip.folder(`${root}/Drivers`); zip.folder(`${root}/Include/scripts/groovy`); zip.folder(`${root}/Data Files`); zip.folder(`${root}/Checkpoints`);
     if (validationSummary) {
-      const report = `# Validation Report\n\nFiles: ${validationSummary.total_files}\nErrors: ${validationSummary.errors}\nWarnings: ${validationSummary.warnings}\nPlaceholders: ${validationSummary.placeholders}\n\n## Issues\n${validationIssues.map(i => `- [${i.severity.toUpperCase()}] ${i.file}${i.line ? `:${i.line}` : ""} — ${i.message}`).join("\n")}`;
+      const report = `# Validation Report\n\nFiles: ${validationSummary.total_files}\nErrors: ${validationSummary.errors}\nWarnings: ${validationSummary.warnings}\nPlaceholders: ${validationSummary.placeholders}\n\n## Issues\n${validationIssues.map(i => `- [${i.severity.toUpperCase()}] ${i.file}${i.line ? `:${i.line}` : ""} | ${i.message}`).join("\n")}`;
       zip.file(`${root}/VALIDATION_REPORT.md`, report);
     }
-    zip.file(`${root}/README.md`, `# ${projectSettings.project_name || "SimplifyTesting"} — Katalon Automation Package\n\nGenerated by SimplifyTesting AI Test Engineering Platform.\n\n## How to Import\n1. Open Katalon Studio\n2. File → Open Project\n3. Navigate to this extracted folder and select the .prj file\n4. Katalon will load all Test Cases, Object Repository, and Test Suites\n\n## Project Config\n- Base URL: ${projectSettings.base_url}\n- Browser: ${projectSettings.browser_type}\n- Locator Strategy: ${projectSettings.locator_strategy}\n- Naming Convention: ${projectSettings.naming_convention}\n`);
+    zip.file(`${root}/README.md`, `# ${projectSettings.project_name || "SimplifyTesting"} | Katalon Automation Package\n\nGenerated by SimplifyTesting AI Test Engineering Platform.\n\n## How to Import\n1. Open Katalon Studio\n2. File ? Open Project\n3. Navigate to this extracted folder and select the .prj file\n4. Katalon will load all Test Cases, Object Repository, and Test Suites\n\n## Project Config\n- Base URL: ${projectSettings.base_url}\n- Browser: ${projectSettings.browser_type}\n- Locator Strategy: ${projectSettings.locator_strategy}\n- Naming Convention: ${projectSettings.naming_convention}\n`);
     const blob = await zip.generateAsync({ type: "blob" });
     saveAs(blob, `${projectSettings.project_name || "SimplifyTesting"}_Katalon.zip`);
     toast.success("Katalon project package downloaded!");
@@ -405,11 +422,8 @@ const Step6RefineAutomation = () => {
             <Button size="sm" variant="outline" onClick={() => setAiValidationOpen(true)} disabled={allFiles.length === 0} className="gap-2">
               <Sparkles className="w-4 h-4" /> AI Validate
             </Button>
-            <Button variant="outline" onClick={runValidation} disabled={validating} className="gap-2">
-              <ShieldCheck className="w-4 h-4" /> {validating ? "Validating..." : "Syntax Check"}
-            </Button>
-            <Button variant="outline" onClick={runRegexCheck} disabled={validating || autoFixing} className="gap-2">
-              <ShieldCheck className="w-4 h-4" /> Regex Check
+            <Button variant="outline" onClick={runStaticCheck} disabled={validating || autoFixing} className="gap-2">
+              <ShieldCheck className="w-4 h-4" /> {validating ? "Checking..." : "Static Check"}
             </Button>
             {regexIssues.some((r: any) => r.status === "error" || r.status === "warning") && (
               <Button variant="destructive" size="sm" onClick={autoFixAll} disabled={autoFixing} className="gap-2">
@@ -492,16 +506,16 @@ const Step6RefineAutomation = () => {
         <div className="mt-4 p-4 rounded-xl bg-primary/10 border border-primary/30 space-y-2">
           <div className="flex justify-between items-center text-xs">
             <span className="text-muted-foreground">
-              Batch {genJob.completed_batches + genJob.failed_batches}/{genJob.total_batches} • {genJob.scripts_generated} scripts generated
+              Batch {genJob.completed_batches + genJob.failed_batches}/{genJob.total_batches} | {genJob.scripts_generated} scripts generated
             </span>
             <span className="font-mono text-primary font-semibold">{genJob.percentage}%</span>
           </div>
           <Progress value={genJob.percentage} className="h-2" />
           {genJob.failed_batches > 0 && (
-            <p className="text-xs text-warning">⚠ {genJob.failed_batches} batch(es) failed, continuing...</p>
+            <p className="text-xs text-warning">? {genJob.failed_batches} batch(es) failed, continuing...</p>
           )}
           <p className="text-[10px] text-muted-foreground italic">
-            💡 You can navigate away — generation continues in the background.
+            You can navigate away - generation continues in the background.
           </p>
         </div>
       )}
@@ -519,43 +533,50 @@ const Step6RefineAutomation = () => {
                validationSummary.warnings > 0 ? <AlertTriangle className="w-5 h-5 text-warning" /> :
                <CheckCircle2 className="w-5 h-5 text-success" />}
               <span className="font-semibold text-foreground">
-                {validationSummary.errors} errors · {validationSummary.warnings} warnings · {validationSummary.placeholders} placeholders · {validationSummary.infos} suggestions
+                {validationSummary.errors} errors | {validationSummary.warnings} warnings | {validationSummary.placeholders} placeholders | {validationSummary.infos} suggestions
               </span>
             </div>
             {(validationSummary.errors > 0 || validationSummary.warnings > 0 || validationSummary.placeholders > 0) && (
               <Button size="sm" variant="outline" onClick={runAutoFix} disabled={fixing} className="gap-2">
                 {fixing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wrench className="w-4 h-4" />}
-                {fixing ? "Fixing…" : "Auto-Fix Issues"}
+                {fixing ? "Fixing|" : "Auto-Fix Issues"}
               </Button>
             )}
           </div>
         </motion.div>
       )}
 
-      {/* Regex Check Issues */}
-      {regexIssues.some((r: any) => r.issue_count > 0) && (
+      {/* Static Check Issues | regex issues + syntax errors */}
+      {regexIssues.some((r: any) => r.issue_count > 0 || r.status === "error") && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
           className="mt-4 p-4 rounded-xl border bg-destructive/10 border-destructive/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-destructive" />
               <span className="text-sm font-semibold text-destructive">
-                {regexIssues.filter((r: any) => r.issue_count > 0).length} script(s) with fixable issues
+                {regexIssues.filter((r: any) => r.issue_count > 0 || r.status === "error").length} script(s) with fixable issues
               </span>
             </div>
           </div>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {regexIssues.filter((r: any) => r.issue_count > 0).map((script: any, i: number) => (
+            {regexIssues.filter((r: any) => r.issue_count > 0 || r.status === "error").map((script: any, i: number) => (
               <div key={i} className="text-xs border-b border-border pb-1">
-                <span className="font-mono text-destructive font-semibold">{script.tc_code}</span>
+                <span className="font-mono text-destructive font-semibold">{script.tc_code || script.file_path}</span>
                 <div className="ml-2 space-y-0.5 mt-0.5">
-                  {script.issues.slice(0, 3).map((issue: any, j: number) => (
+                  {/* Syntax errors */}
+                  {script.syntax_message && script.status === "error" && (
+                    <div className="text-muted-foreground">
+                      <span className="text-destructive font-semibold">[Syntax] </span>{script.syntax_message}
+                    </div>
+                  )}
+                  {/* Regex issues */}
+                  {(script.issues || []).slice(0, 3).map((issue: any, j: number) => (
                     <div key={j} className="text-muted-foreground">
                       Line {issue.line}: {issue.message}
                       {issue.can_auto_fix && <span className="ml-1 text-success text-[10px]">[auto-fixable]</span>}
                     </div>
                   ))}
-                  {script.issues.length > 3 && <div className="text-muted-foreground">+{script.issues.length - 3} more issues</div>}
+                  {(script.issues || []).length > 3 && <div className="text-muted-foreground">+{script.issues.length - 3} more issues</div>}
                 </div>
               </div>
             ))}
@@ -637,22 +658,22 @@ const Step6RefineAutomation = () => {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 p-5 rounded-xl bg-card border border-border">
         <h3 className="text-sm font-semibold text-foreground mb-3">Katalon Project Structure</h3>
         <pre className="text-xs font-mono text-muted-foreground">{`${projectSettings.project_name || "SimplifyTesting"}/
-├── ${projectSettings.project_name || "SimplifyTesting"}.prj          ← Katalon project file
-├── Profiles/
-│   └── default.glbl                 ← GlobalVariable.base_url
-├── Scripts/
-│   ${katalon.scripts.slice(0, 5).map(s => s.file_path.split("/").slice(1).join("/")).join("\n│   ")}${katalon.scripts.length > 5 ? `\n│   ... (${katalon.scripts.length - 5} more)` : ""}
-├── Test Cases/
-│   ${katalon.scripts.slice(0, 5).map(s => { const tc = s.file_path.split("/")[1]; return tc + ".tc"; }).join("\n│   ")}${katalon.scripts.length > 5 ? `\n│   ... (${katalon.scripts.length - 5} more)` : ""}
-├── Object Repository/
-│   ${katalon.page_objects.slice(0, 5).map(p => p.file_path.replace("Object Repository/", "")).join("\n│   ")}${katalon.page_objects.length > 5 ? `\n│   ... (${katalon.page_objects.length - 5} more)` : ""}
-├── Test Suites/
-│   └── ${katalon.test_suite.file_path.split("/").pop()}
-├── Keywords/
-├── settings/
-│   ├── internal/
-│   └── execution/
-${validationSummary ? "├── VALIDATION_REPORT.md\n" : ""}└── README.md`}</pre>
++-- ${projectSettings.project_name || "SimplifyTesting"}.prj          # Katalon project file
++-- Profiles/
+|   +-- default.glbl                 # GlobalVariable.base_url
++-- Scripts/
+|   ${katalon.scripts.slice(0, 5).map(s => s.file_path.split("/").slice(1).join("/")).join("\n|   ")}${katalon.scripts.length > 5 ? `\n|   ... (${katalon.scripts.length - 5} more)` : ""}
++-- Test Cases/
+|   ${katalon.scripts.slice(0, 5).map(s => { const tc = s.file_path.split("/")[1]; return tc + ".tc"; }).join("\n|   ")}${katalon.scripts.length > 5 ? `\n|   ... (${katalon.scripts.length - 5} more)` : ""}
++-- Object Repository/
+|   ${katalon.page_objects.slice(0, 5).map(p => p.file_path.replace("Object Repository/", "")).join("\n|   ")}${katalon.page_objects.length > 5 ? `\n|   ... (${katalon.page_objects.length - 5} more)` : ""}
++-- Test Suites/
+|   +-- ${katalon.test_suite.file_path.split("/").pop()}
++-- Keywords/
++-- settings/
+|   +-- internal/
+|   +-- execution/
+${validationSummary ? "+-- VALIDATION_REPORT.md\n" : ""}+-- README.md`}</pre>
       </motion.div>
 
       <div className="mt-6 flex justify-between">
@@ -671,7 +692,6 @@ ${validationSummary ? "├── VALIDATION_REPORT.md\n" : ""}└── README.m
           projectId={pid}
           onAccepted={async () => {
             if (!pid) return;
-            const { loadKatalonFromDb } = await import("@/lib/wizardContext");
             const katalonData = await loadKatalonFromDb(pid);
             if (katalonData) setKatalon(katalonData);
           }}

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿﻿﻿import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, ArrowRight, Loader2, FileText, Layout, Code2, Layers, CheckCircle2, ShieldCheck, AlertTriangle, Zap, RotateCcw, Figma, FolderCode, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -41,6 +41,7 @@ interface ProjectStatus {
   doc_count: number;
   has_figma: boolean;
   has_code: boolean;
+  code_chunk_count: number;
   total_requirements: number;
 }
 
@@ -93,7 +94,7 @@ const Step3GenerateTestCases = () => {
         ["extract-requirements", "ingest-source-code"].includes(latestJob.job_type);
       setIsProcessingSources(!!isRunning);
 
-      // Detailed doc summary — use doc_count for documents, boolean flags for figma/code
+      // Detailed doc summary � use doc_count for documents, boolean flags for figma/code
       setDocSummary({
         brd: status.doc_count,
         fsd: 0,
@@ -141,12 +142,13 @@ const Step3GenerateTestCases = () => {
   const anyLevelSelected = selectedLevels.system || selectedLevels.integration || selectedLevels.uat;
 
   /** Poll job status via FastAPI until completed/failed, with per-step progress update */
-  const pollJob = async (stepId: string, prefix?: string): Promise<number> => {
+  const pollJob = async (stepId: string, prefix?: string, jobId?: string): Promise<number> => {
     const maxAttempts = 180; // 6 minutes max
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(r => setTimeout(r, 2000));
       try {
-        const job = await apiClient.get<any>(`/projects/${projectId}/jobs/latest`);
+        const url = jobId ? `/projects/${projectId}/jobs/${jobId}` : `/projects/${projectId}/jobs/latest`;
+        const job = await apiClient.get<any>(url);
         if (!job) continue;
         if (job.status === "completed") return job.scripts_generated || 0;
         if (job.status === "failed") throw new Error(job.error_message || `${stepId} pass failed`);
@@ -181,7 +183,7 @@ const Step3GenerateTestCases = () => {
     // ====== PASS 1: Per-Requirement Generation ======
     updateStep("generate", { status: "running" });
     try {
-      await apiClient.post("/pipelines/test-cases", {
+      const genResp = await apiClient.post<any>("/pipelines/test-cases", {
         project_id: projectId,
         ai_model: projectSettings.ai_model,
         test_levels: levelsArray,
@@ -192,7 +194,7 @@ const Step3GenerateTestCases = () => {
         code_only_mode: codeOnlyMode,
       });
 
-      const baseCount = await pollJob("generate", "cases");
+      const baseCount = await pollJob("generate", "cases", genResp?.jobId || genResp?.job_id);
       setGeneratedCount(baseCount);
       updateStep("generate", { status: "done", result: `${baseCount} test cases` });
       toast.success(`Pass 1 complete: ${baseCount} test cases generated`);
@@ -204,7 +206,7 @@ const Step3GenerateTestCases = () => {
       return;
     }
 
-    // ====== PASS 2-4: Enhancement passes — trigger ALL in parallel, poll each independently ======
+    // ====== PASS 2-4: Enhancement passes � trigger ALL in parallel, poll each independently ======
     const enhancePasses = [
       { id: "e2e", pass: "e2e", prefix: "E2E flows" },
       { id: "coverage", pass: "coverage", prefix: "gap cases" },
@@ -226,13 +228,15 @@ const Step3GenerateTestCases = () => {
       )
     );
 
-    // Poll each pass result independently (backend queues them, we poll sequentially for status)
+    // Poll each pass result independently using specific job_id
     const parallelResults = await Promise.allSettled(
       enhancePasses.map(async (ep, idx) => {
         if (triggerResults[idx].status === "rejected") {
           throw (triggerResults[idx] as PromiseRejectedResult).reason;
         }
-        const added = await pollJob(ep.id, ep.prefix);
+        const triggerResp = (triggerResults[idx] as PromiseFulfilledResult<any>).value;
+        const jobId = triggerResp?.jobId || triggerResp?.job_id;
+        const added = await pollJob(ep.id, ep.prefix, jobId);
         return { ...ep, added };
       })
     );
@@ -252,13 +256,13 @@ const Step3GenerateTestCases = () => {
     // ====== PASS 5: Review (after 2-4 complete) ======
     updateStep("review", { status: "running" });
     try {
-      await apiClient.post("/pipelines/test-cases", {
+      const reviewResp = await apiClient.post<any>("/pipelines/test-cases", {
         project_id: projectId,
         ai_model: projectSettings.ai_model,
         sources: sourcesArray,
         pass_name: "review",
       });
-      await pollJob("review", "reviewed");
+      await pollJob("review", "reviewed", reviewResp?.jobId || reviewResp?.job_id);
       updateStep("review", { status: "done", result: "Complete" });
     } catch (err: any) {
       updateStep("review", { status: "error", result: err.message || "Failed" });
@@ -313,7 +317,7 @@ const Step3GenerateTestCases = () => {
       }
     }
 
-    // Enhancement passes that need to run — trigger in parallel
+    // Enhancement passes that need to run � trigger in parallel
     const enhanceIds = ["e2e", "coverage", "negative"].filter(id => passOrder.indexOf(id) >= startIdx);
     if (enhanceIds.length > 0) {
       enhanceIds.forEach(id => updateStep(id, { status: "running" }));
@@ -510,7 +514,7 @@ const Step3GenerateTestCases = () => {
         <p className="text-xs text-muted-foreground mt-2">
           <span className="text-primary font-semibold">{requirementCount}</span> total requirements
           {docSummary.code > 0 && selectedSources.code && (
-            <span> • <span className="text-primary font-semibold">{docSummary.code}</span> code chunks</span>
+            <span> � <span className="text-primary font-semibold">{docSummary.code}</span> code chunks</span>
           )}
         </p>
       </motion.div>
@@ -617,7 +621,7 @@ const Step3GenerateTestCases = () => {
       )}
 
       <div className="mt-6 flex justify-between">
-        <Button variant="outline" onClick={() => navigate(`/project/${projectId}/upload`)}>← Back</Button>
+        <Button variant="outline" onClick={() => navigate(`/project/${projectId}/upload`)}>? Back</Button>
         <Button onClick={() => { setCurrentStep(4); navigate(`/project/${projectId}/test-cases`); }} disabled={generatedCount === 0} className="gap-2">
           Review & Refine <ArrowRight className="w-4 h-4" />
         </Button>

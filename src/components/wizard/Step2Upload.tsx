@@ -1,4 +1,4 @@
-﻿import { Button } from "@/components/ui/button";
+﻿﻿import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -83,6 +83,8 @@ const Step2Upload = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState("brd");
   const [processing, setProcessing] = useState(false);
+  const [extractJobId, setExtractJobId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [figmaMode, setFigmaMode] = useState<"link" | "upload">("link");
   const [figmaFiles, setFigmaFiles] = useState<FigmaFile[]>([]);
   const [isFigmaDragging, setIsFigmaDragging] = useState(false);
@@ -541,7 +543,7 @@ const Step2Upload = () => {
       }
     }
 
-    // Remaining loose images → Vision AI fallback
+    // Remaining loose images ? Vision AI fallback
     const standaloneUploads = looseImgFiles.filter(
       (f) => !processedImgNames.has(f.name),
     );
@@ -585,7 +587,7 @@ const Step2Upload = () => {
           : await pair.jsonFile!.text();
         const metadata = JSON.parse(jsonText);
 
-        // Transform plugin elements → ExtractedUIElement schema
+        // Transform plugin elements ? ExtractedUIElement schema
         const interactableElements = (metadata.extractedElements || []).map(
           (el: any, index: number) => ({
             id: index + 1,
@@ -595,7 +597,7 @@ const Step2Upload = () => {
 
         // Use the frame's exact origin from metadata (stored by the Figma plugin).
         // absoluteBoundingBox on child nodes are in Figma's global canvas space.
-        // canvas.ts subtracts this origin before scaling: (childX - frameX) * scale → correct pixel pos.
+        // canvas.ts subtracts this origin before scaling: (childX - frameX) * scale ? correct pixel pos.
         const parentFrame = {
           x: metadata.frameX ?? 0,
           y: metadata.frameY ?? 0,
@@ -846,6 +848,21 @@ const Step2Upload = () => {
   };
 
 
+  const cancelExtraction = async () => {
+    if (!projectId || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await apiClient.post("/pipelines/extract-requirements/cancel", { project_id: projectId });
+      toast.info("Extraction cancelled");
+      setProcessing(false);
+      setExtractJobId(null);
+    } catch (err) {
+      toast.error("Failed to cancel extraction");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const processAll = async () => {
     const toProcess = files.filter((f) => f.status === "uploaded" && f.dbId);
     if (toProcess.length === 0) {
@@ -869,6 +886,7 @@ const Step2Upload = () => {
           embedding_model: EMBEDDING_MODEL
         });
         
+        if (response.job_id) setExtractJobId(response.job_id);
         if (response.status === "Done") {
           totalReqs += response.total_requirements || 0;
           setFiles((prev) =>
@@ -897,8 +915,8 @@ const Step2Upload = () => {
       totalChunks: totalReqs,
     });
 
-    // 🌟 AI AUTO-MAPPING: Mapping Figma and Code via Backend
-    // Always trigger mapping — backend checks if sources exist in DB
+    // ?? AI AUTO-MAPPING: Mapping Figma and Code via Backend
+    // Always trigger mapping � backend checks if sources exist in DB
     if (true) {
       setIsMappingFigma(true); // Re-using this loader for general mapping
       try {
@@ -1373,8 +1391,8 @@ const Step2Upload = () => {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {formatSize(sc.size)}
-                    {sc.fileCount != null && ` • ${sc.fileCount} files`}
-                    {sc.chunkCount != null && ` • ${sc.chunkCount} chunks`}
+                    {sc.fileCount != null && ` � ${sc.fileCount} files`}
+                    {sc.chunkCount != null && ` � ${sc.chunkCount} chunks`}
                   </p>
                   {sc.languageStats &&
                     Object.keys(sc.languageStats).length > 0 && (
@@ -1453,6 +1471,18 @@ const Step2Upload = () => {
                   : "Processing..."
                 : "Extract Requirements"}
             </Button>
+              {processing && !isMappingFigma && (
+                <Button
+                  onClick={cancelExtraction}
+                  disabled={isCancelling}
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
+                >
+                  {isCancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                  {isCancelling ? "Cancelling..." : "Cancel"}
+                </Button>
+              )}
           </div>
           {files.map((file) => (
             <div
@@ -1465,7 +1495,7 @@ const Step2Upload = () => {
                   {file.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatSize(file.size)} •{" "}
+                  {formatSize(file.size)} �{" "}
                   {docTypeLabels[file.docType] || file.docType}
                 </p>
               </div>
@@ -1544,7 +1574,7 @@ const Step2Upload = () => {
           variant="outline"
           onClick={() => navigate(`/project/${projectId}`)}
         >
-          ← Dashboard
+          ? Dashboard
         </Button>
         <Button
           onClick={() => {
