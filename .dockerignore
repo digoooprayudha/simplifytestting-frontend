@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Version control
+.git/
+.gitignore
+
+# Environment files (secrets must not be in the image layer)
+.env
+.env.*
+!.env.example
+
+# Editor / OS artifacts
+.vscode/
+.DS_Store
+*.log
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# CI
+.github/
+
+# Documentation
+*.md

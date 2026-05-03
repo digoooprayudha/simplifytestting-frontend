@@ -1,6 +1,6 @@
-import { useState } from "react";
+﻿﻿﻿import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Edit3, Check, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Edit3, Check, X, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { TestCase } from "./useTestCasesState";
@@ -76,7 +76,7 @@ export const TestCaseTableView = ({
                 <TableCell className="py-2">
                   <div className="flex gap-1">
                     <button onClick={() => onEdit(tc)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><Edit3 className="w-3.5 h-3.5" /></button>
-                    {tc.status !== "approved" && <button onClick={() => approveCase(tc.id)} className="p-1 rounded hover:bg-success/20 text-muted-foreground hover:text-success"><Check className="w-3.5 h-3.5" /></button>}
+                    <button onClick={() => approveCase(tc.id)} title={tc.status === "approved" ? "Click to unapprove" : "Click to approve"} className={`p-1 rounded ${tc.status === "approved" ? "text-success bg-success/20 hover:bg-destructive/20 hover:text-destructive" : "text-muted-foreground hover:bg-success/20 hover:text-success"}`}>{tc.status === "approved" ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}</button>
                     <button onClick={() => deleteCase(tc.id)} className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </TableCell>

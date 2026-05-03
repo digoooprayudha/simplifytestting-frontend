@@ -1,4 +1,4 @@
-﻿import { apiClient } from "@/lib/apiClient";
+﻿﻿import { apiClient } from "@/lib/apiClient";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -67,7 +67,11 @@ export function useGenerationJobPoller({ projectId, jobId, onComplete, onError }
         if (!projectId) return;
 
         // Use the new FastAPI endpoint for polling the latest job status
-        const jobData = await apiClient.get<GenerationJob>(`/projects/${projectId}/jobs/latest`);
+        // Poll by specific jobId if available, otherwise fall back to latest
+        const jobUrl = jobId
+          ? `/projects/${projectId}/jobs/${jobId}`
+          : `/projects/${projectId}/jobs/latest`;
+        const jobData = await apiClient.get<GenerationJob>(jobUrl);
 
         if (!jobData || jobData.status === "idle") return;
 

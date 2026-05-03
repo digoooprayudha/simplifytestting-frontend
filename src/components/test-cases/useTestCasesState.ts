@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/apiClient";
 import type { Tables } from "@/integrations/supabase/types";
@@ -155,13 +155,18 @@ export const useTestCasesState = (projectId?: string) => {
   }, []);
 
   const approveCase = useCallback(async (id: string) => {
+    const tc = testCases.find(t => t.id === id);
+    if (!tc) return;
+    const newStatus = tc.status === "approved" ? "generated" : "approved";
     try {
-      await apiClient.patch(`/test-cases/${id}`, { status: "approved" });
-      setTestCases(prev => prev.map(tc => tc.id === id ? { ...tc, status: "approved" } : tc));
+      await apiClient.patch(`/test-cases/${id}`, { status: newStatus });
+      setTestCases(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+      if (newStatus === "approved") toast.success("Approved");
+      else toast.info("Approval removed");
     } catch (error) {
-      toast.error("Approval failed");
+      toast.error("Failed to update status");
     }
-  }, []);
+  }, [testCases]);
 
   const deleteCase = useCallback(async (id: string) => {
     try {

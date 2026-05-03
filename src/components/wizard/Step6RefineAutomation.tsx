@@ -1,4 +1,4 @@
-﻿﻿import ValidationModal from "@/components/modals/ValidationModal";
+﻿﻿﻿import ValidationModal from "@/components/modals/ValidationModal";
 import { TestCasePagination } from "@/components/test-cases/TestCasePagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,7 +115,7 @@ const Step6RefineAutomation = () => {
         return;
       }
       if (response.error) throw new Error(response.error);
-      setCurrentJobId(response.jobId || "polling");
+      setCurrentJobId(response.jobId || null);  // null = fallback to jobs/latest
       toast.info(`Generating ${response.totalTestCases ?? "?"} missing scripts...`);
     } catch (err: any) {
       toast.error(err.message || "Failed to start generation");
